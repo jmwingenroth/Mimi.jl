@@ -137,6 +137,10 @@ run_mcs(mcs, N;
 
 function other_loop_func(mcs::MonteCarloSimulation, tup)
     global loop_counter
+    @info "tup: $tup"
+    (s, y, r) = tup
+    @assert (y isa Int) "year is not an int"
+
     loop_counter += 10
 end
 
@@ -147,14 +151,20 @@ end
 
 loop_counter = 0
 
+scenario_args = Any[
+    :scen  => [:low, :high],
+    :years => [2010, 2020, 2030],
+    :rate  => [0.015, 0.03, 0.05]
+]
+
 run_mcs(mcs, N;
         output_dir=output_dir,
         pre_trial_func=pre_trial,
         scenario_func=other_loop_func,
-        scenario_args=[:scen => [:low, :high],
-                       :rate => [0.015, 0.03, 0.05]])
+        scenario_args=scenario_args)
 
-@test loop_counter == 6 * N + 60
+combos = prod([length(v) for (s, v) in scenario_args])
+@test loop_counter == combos * (N + 10)
 
 
 function post_trial(mcs::MonteCarloSimulation, trialnum::Int, ntimesteps::Int, tup::Union{Nothing,Tuple})
