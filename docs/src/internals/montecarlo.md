@@ -332,12 +332,12 @@ results = si[:grosseconomy, :K] # model index chosen defaults to 1
 ```
 ### Simulation Modification Functions
 A small set of unexported functions are available to modify an existing `SimulationDefinition`.  The functions include:
-* `deleteRV!`
+* `delete_rv!`
 * `addRV!`
-* `replaceRV!`
-* `deleteTransform!`
-* `addTransform!`
-* `deleteSave!`
-* `addSave!`
+* `replace_rv!`
+* `delete_transform!`
+* `add_transform!`
+* `delete_save!`
+* `add_save!`
 * `set_payload!`
 * `payload`
