@@ -11,6 +11,8 @@ using StringBuilders
 export
     @defcomp,
     @defsim,
+    @name_rv!,
+    @assign_rv!,
     MarginalModel,
     Model,
     add_comp!,  
