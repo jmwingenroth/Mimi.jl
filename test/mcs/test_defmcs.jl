@@ -268,3 +268,29 @@ trial2 = copy(si2.sim_def.rvdict[:name1].dist.values)
 
 @test length(trial1) == length(trial2)
 @test trial1 != trial2
+
+
+# Test simulation update macros
+
+# Test wrong type of expression passed, throws "Unknown expression" error
+@test_throws ErrorException @name_rv!(sd2, name4 = name1)   # RHS must be a distribution for @name_rv!
+@test_throws ErrorException @assign_rv!(sd2, name4 = [Uniform(0,1), Normal(0,1)])   # RHS must be a distributino or RV name for @assign_rv!
+
+# Test invalid RV arguments, throws specific error
+@test_throws ErrorException @name_rv!(sd2, name2 = Normal(0,1)) # error because name2 already exists
+@test_throws ErrorException @assign_rv!(sd2, share = name4) # error because name4 doesn't already exist
+
+# Test creating a new RV
+@name_rv!(sd2, name4 = Normal(0, 4)) 
+@test haskey(sd2.rvdict, :name4)
+
+# Test assigning an existing RV
+old_length = length(sd2.translist)
+@assign_rv!(sd2, share = name4)
+@test length(sd2.translist) == old_length   # Old TransformSpec is removed before new one is added
+
+# Test assigning a new RV
+n_rvs = length(sd2.rvdict)
+@assign_rv!(sd2, sigma[2020:5:2050, (Region2, Region3)] = Uniform(0,2))
+@test length(sd2.translist) == old_length
+@test length(sd2.rvdict) == n_rvs + 1   # Old RV is not removed; new one is added

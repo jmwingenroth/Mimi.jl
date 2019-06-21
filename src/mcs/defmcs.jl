@@ -210,22 +210,7 @@ macro assign_rv!(sim, expr)
         @capture(expr, extvar_ += distname_(distargs__)) ||
         @capture(expr, extvar_ *= distname_(distargs__)))
 
-        if rvname === nothing 
-            # Need to add a new RV
-            paramname = @capture(extvar, name_[args__]) ? name : extvar
-            rvname = _make_rvname(paramname)
-            addexpr(:(
-                Mimi.add_rv!($sim, RandomVariable($(QuoteNode(rvname)), $distname($(distargs...))))
-            ))
-        else
-            # Using an existing RV, need to check that rvname already exists in the sim def
-            addexpr(:(
-                !($(QuoteNode(rvname)) in keys($sim.rvdict)) && error("Random variable \"$($(QuoteNode(rvname)))\" not found in the provided simulation.")
-            ))
-        end
-
-        # Add the TransformSpec
-        op = expr.head
+        # Find paramname and dims if any
         if @capture(extvar, name_[args__])
             dims = _make_dims(args)
             paramname = name
@@ -233,15 +218,35 @@ macro assign_rv!(sim, expr)
             dims = []
             paramname = extvar
         end
+
+        if rvname === nothing 
+            # Need to add a new RV
+            rvname = _make_rvname(paramname)
+            addexpr(:(
+                Mimi.add_rv!($sim, RandomVariable($(QuoteNode(rvname)), $distname($(distargs...))))
+            ))
+        else
+            # Using an existing RV, need to check that the rvname already exists in the SimulationDef
+            addexpr(:(
+                $(QuoteNode(rvname)) in keys($sim.rvdict) || 
+                    error("Random variable \"$($(QuoteNode(rvname)))\" not found in the provided simulation.")
+            ))
+        end
+
+        op = expr.head
+        # Delete any old TransformSpec for this paramname and dims
         addexpr(:(
             [Mimi.delete_transform!($sim, trans.rvname) for trans in Mimi.get_transform($sim, $(QuoteNode(paramname)), [$(dims...)])]
         ))
+        # Add the new TransformSpec
         addexpr(:(
             Mimi.add_transform!($sim, $(QuoteNode(paramname)), $(QuoteNode(op)), $(QuoteNode(rvname)), [$(dims...)])
         ))
 
     else
-        error("Unknown expression: $expr.")
+        addexpr(:(
+            error("Unknown expression passed to @assign_rv!: \"$($(QuoteNode(expr))).\"")
+        ))
     end
 
     return esc(result)
@@ -270,7 +275,8 @@ macro name_rv!(sim, expr)
     if @capture(expr, rvname_ = distname_(distargs__))
         # Check that the rvname does not already exist in the sim definition
         addexpr(:(
-            ($(QuoteNode(rvname)) in keys($sim.rvdict)) && error("Random variable \"$($(QuoteNode(rvname)))\" already exists in the provided simulation.")
+            $(QuoteNode(rvname)) in keys($sim.rvdict) && 
+                error("Random variable \"$($(QuoteNode(rvname)))\" already exists in the provided simulation.")
         ))
 
         # Add a new random variable
@@ -279,7 +285,9 @@ macro name_rv!(sim, expr)
         ))
 
     else
-        error("Unknown expression $expr.")
+        addexpr(:(
+            error("Unknown expression passed to @name_rv!: \"$($(QuoteNode(expr))).\"")
+        ))
     end
 
     return esc(result)
