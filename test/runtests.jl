@@ -71,6 +71,9 @@ Electron.prep_test_env()
     @info("test_adder.jl")
     @time include("test_adder.jl")
 
+    @info("test_multiplier.jl")
+    @time include("test_multiplier.jl")
+
     @info("test_getindex.jl")
     @time include("test_getindex.jl")
 
@@ -110,7 +113,7 @@ Electron.prep_test_env()
     @info("test_firstlast.jl")
     @time include("test_firstlast.jl")
 
-    @info("test_explorer_model.jl")
+    @info("test_explorer_model.jl") 
     @time include("test_explorer_model.jl")
 
     @info("test_explorer_sim.jl")

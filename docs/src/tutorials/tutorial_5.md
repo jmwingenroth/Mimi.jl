@@ -9,7 +9,7 @@ Working through the following tutorial will require:
 - [Julia v1.4.0](https://julialang.org/downloads/) or higher
 - [Mimi v0.10.0](https://github.com/mimiframework/Mimi.jl) or higher
 
-If you have not yet prepared these, go back to the main tutorial page and follow the instructions for their download.
+**If you have not yet prepared these, go back to the first tutorial to set up your system.**
 
 Note that we have recently released Mimi v1.0.0, which is a breaking release and thus we cannot promise backwards compatibility with version lower than v1.0.0 although several of these tutorials may run properly with older versions. For assistance updating your own model to v1.0.0, or if you are curious about the primary changes made, see the How-to Guide on porting to Mimi v1.0.0. Mimi v0.10.0 is functionally dentical to Mimi v1.0.0, but includes deprecation warnings instead of errors to assist users in porting to v1.0.0.
 
@@ -366,8 +366,10 @@ scc_results = Mimi.payload(si)[2]   # Recall that the SCC array was the second o
 
 ```
 
-#### Simulation Modification Functions
-A small set of unexported functions are available to modify an existing `SimulationDef`.  The functions include:
+#### Other Helpful Functions
+
+A small set of unexported functions are available to modify an existing `SimulationDef`.  Please refer to How-to Guide 3: Conduct Monte Carlo Simulations and Sensitivity Analysis for an in depth description of their use cases.  The functions include the following:
+
 * `delete_RV!`
 * `add_RV!`
 * `replace_RV!`
@@ -375,12 +377,13 @@ A small set of unexported functions are available to modify an existing `Simulat
 * `add_transform!`
 * `delete_save!`
 * `add_save!`
+* `get_simdef_rvnames`
 * `set_payload!`
 * `payload`
 
 #### Full list of keyword options for running a simulation
 
-View How-to Guide 3: Conduct Sensitivity Analysis for **critical and useful details on the full signature of this function**, as well as more details and optionality for more advanced use cases.
+View How-to Guide 3: Conduct Monte Carlo Simulations and Sensitivity Analysis for **critical and useful details on the full signature of this function**, as well as more details and optionality for more advanced use cases.
 
 ```julia
 function Base.run(sim_def::SimulationDef{T}, models::Union{Vector{Model}, Model}, samplesize::Int;

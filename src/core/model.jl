@@ -120,15 +120,13 @@ must be a symbol or convert to a symbol matching the name of an external paramet
 hat already exists in the model definition. The update_timesteps keyword argument 
 is deprecated, but temporarily remains as a dummy argument to allow warning detection.
 """
-@delegate update_params!(m::Model, parameters::Dict) => md
+@delegate update_params!(m::Model, parameters::Dict; update_timesteps = nothing) => md
 
 """
     add_comp!(
         m::Model, comp_id::ComponentId, comp_name::Symbol=comp_id.comp_name;
         first::NothingInt=nothing,
         last::NothingInt=nothing,
-        first_free::Bool=true,
-        last_free::Bool=true,
         before::NothingSymbol=nothing,
         after::NothingSymbol=nothing,
         rename::NothingPairList=nothing
@@ -152,8 +150,6 @@ end
         m::Model, comp_def::AbstractComponentDef, comp_name::Symbol=comp_id.comp_name;
         first::NothingInt=nothing,
         last::NothingInt=nothing,
-        first_free::Bool=true,
-        last_free::Bool=true,
         before::NothingSymbol=nothing,
         after::NothingSymbol=nothing,
         rename::NothingPairList=nothing
