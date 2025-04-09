@@ -200,10 +200,18 @@ end
 #
 
 function _update_nt_type!(sim_def::SimulationDef{T}) where T <: AbstractSimulationData
-    names = (keys(sim_def.rvdict)...,)
-    types = [eltype(fld) for fld in values(sim_def.rvdict)]
-    sim_def.nt_type = NamedTuple{names, Tuple{types...}}
+    sim_def.nt_type = nothing
     nothing
+end
+
+function _get_nt_type(sim_def::SimulationDef{T}) where T <: AbstractSimulationData
+    if sim_def.nt_type===nothing
+        names = (keys(sim_def.rvdict)...,)
+        types = [eltype(fld) for fld in values(sim_def.rvdict)]
+        sim_def.nt_type = NamedTuple{names, Tuple{types...}}
+    end
+
+    return sim_def.nt_type
 end
 
 """
@@ -237,12 +245,12 @@ function add_RV!(sim_def::SimulationDef, rv::RandomVariable)
 end
 
 """
-    add_RV!(sim_def::SimulationDef, name::Symbol, dist::Distribution)
+    add_RV!(sim_def::SimulationDef, name::Symbol, dist::Union{Distribution, PseudoDistribution})
 
 Add a random variable with name `name` and distribution `dist` to Simulation definition 
 `sim_def`. The Simulation's NamedTuple type is updated to include the RV.
 """
-add_RV!(sim_def::SimulationDef, name::Symbol, dist::Distribution) = add_RV!(sim_def, RandomVariable(name, dist))
+add_RV!(sim_def::SimulationDef, name::Symbol, dist::Union{Distribution, PseudoDistribution}) = add_RV!(sim_def, RandomVariable(name, dist))
 
 """
     replace_RV!(sim_def::SimulationDef, rv::RandomVariable)
@@ -258,13 +266,13 @@ function replace_RV!(sim_def::SimulationDef, rv::RandomVariable)
 end
 
 """
-    replace_RV!(sim_def::SimulationDef, name::Symbol, dist::Distribution)
+    replace_RV!(sim_def::SimulationDef, name::Symbol, dist::Union{Distribution, PseudoDistribution})
 
 Replace the rv with name `name` in the Simulation definition `sim_def` with a new RV
 with `name` and distribution `dist`. Update the Simulation's NamedTuple
 type accordingly.
 """
-replace_RV!(sim_def::SimulationDef, name::Symbol, dist::Distribution) = replace_RV!(sim_def, RandomVariable(name, dist))
+replace_RV!(sim_def::SimulationDef, name::Symbol, dist::Union{Distribution, PseudoDistribution}) = replace_RV!(sim_def, RandomVariable(name, dist))
 
 """
     delete_transform!(sim_def::SimulationDef, name::Symbol)

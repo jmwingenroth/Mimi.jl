@@ -104,6 +104,17 @@ function set_dimension!(ccd::AbstractCompositeComponentDef, name::Symbol, keys::
         # pad the time arrays with missings and update their time labels 
         redefined && (ccd isa ModelDef) && _pad_parameters!(ccd)
 
+    # redefining a non-time dimension for a ModelDef
+    elseif redefined && (ccd isa ModelDef)
+
+        for (k, v) in ccd.model_params
+            # We will reset any parameters with this dimension to nothing,
+            # noting that this is only necessary to check if they are array model 
+            # parameters, and thus have dimensionality, and are not already nothing
+            if (v isa ArrayModelParameter) && (name in v.dim_names) && !is_nothing_param(v)
+                ccd.model_params[k] = ArrayModelParameter(nothing, v.dim_names, v.is_shared)
+            end
+        end
     end
 
     return set_dimension!(ccd, name, dim)
@@ -130,7 +141,7 @@ end
     function add_dimension!(comp::AbstractComponentDef, name)
 
 Add a dimension of name `name` to `comp`, where the dimension will be `nothing` 
-unless `name` is an Int in which case we create an "anonymouse" dimension on 
+unless `name` is an Int in which case we create an "anonymous" dimension on 
 the fly with keys `1` through `count` where `count` = `name`.
 """
 function add_dimension!(comp::AbstractComponentDef, name)
@@ -177,7 +188,7 @@ dim_count(def::AbstractDatumDef) = length(dim_names(def))
 Run through all necesssary safety checks for redefining `obj`'s time dimenson to 
 a new dimension with keys `keys`.
 """
-function _check_time_redefinition(obj::AbstractCompositeComponentDef, keys::Union{Int, Vector, Tuple, AbstractRange}) where T
+function _check_time_redefinition(obj::AbstractCompositeComponentDef, keys::Union{Int, Vector, Tuple, AbstractRange})
 
     # get useful variables 
     curr_keys = time_labels(obj)

@@ -26,7 +26,7 @@ function Base.show(io::IO, sim_def::SimulationDef{T}) where T <: AbstractSimulat
 
     print_nonempty("translist", sim_def.translist)
     print_nonempty("savelist",  sim_def.savelist)
-    println("  nt_type: $(sim_def.nt_type)")
+    println("  nt_type: $(_get_nt_type(sim_def))")
 
     Base.show(io, sim_def.data)  # note: data::T
 end
@@ -50,14 +50,14 @@ function Base.show(obj::T) where T <: AbstractSimulationData
 end
 
 """
-    _store_param_results(m::AbstractModel, datum_key::Tuple{Symbol, Symbol}, 
+    _store_param_results!(m::AbstractModel, datum_key::Tuple{Symbol, Symbol}, 
                         trialnum::Int, scen_name::Union{Nothing, String}, 
                         results::Dict{Tuple, DataFrame})
 
 Store `results` for a single parameter `datum_key` in model `m` and return the 
 dataframe for this particular `trial_num`/`scen_name` combination.
 """
-function _store_param_results(m::AbstractModel, datum_key::Tuple{Symbol, Symbol}, 
+function _store_param_results!(m::AbstractModel, datum_key::Tuple{Symbol, Symbol}, 
                             trialnum::Int, scen_name::Union{Nothing, String}, 
                             results::Dict{Tuple, DataFrame})
     @debug "\nStoring trial results for $datum_key"
@@ -122,10 +122,14 @@ function _store_trial_results(sim_inst::SimulationInstance{T}, trialnum::Int,
 
     model_index = 1
     for (m, results) in zip(sim_inst.models, sim_inst.results)
-        for datum_key in savelist
-            trial_df = _store_param_results(m, datum_key, trialnum, scen_name, results)
-            if output_dir !== nothing
+        for datum_key in savelist       
+            
+            # store parameter results to the sim_inst.results dictionary and return the 
+            # trial df that can be optionally streamed out to a file 
+            trial_df = _store_param_results!(m, datum_key, trialnum, scen_name, results)
 
+            if output_dir !== nothing
+                
                 # get sub_dir, which is different from output_dir if there are multiple models
                 if (length(sim_inst.results) > 1)
                     sub_dir = joinpath(output_dir, "model_$(model_index)")
@@ -156,7 +160,7 @@ end
 Save the stored simulation results in `trial_df` from trial `trialnum` to files 
 in the directory `output_dir`
 """
-function _save_trial_results(trial_df::DataFrame, datum_name::String, output_dir::AbstractString, streams::Dict{String, CSVFiles.CSVFileSaveStream{IOStream}}) where T <: AbstractSimulationData
+function _save_trial_results(trial_df::DataFrame, datum_name::String, output_dir::AbstractString, streams::Dict{String, CSVFiles.CSVFileSaveStream{IOStream}})
     filename = joinpath(output_dir, "$datum_name.csv")
     if haskey(streams, filename)
         write(streams[filename], trial_df)
@@ -195,7 +199,7 @@ function get_trial(sim_inst::SimulationInstance, trialnum::Int)
     sim_def = sim_inst.sim_def
 
     vals = [rand(rv.dist) for rv in values(sim_def.rvdict)]
-    sim_inst.current_data = sim_def.nt_type((vals...,))
+    sim_inst.current_data = _get_nt_type(sim_def)((vals...,))
     sim_inst.current_trial = trialnum
     
     return sim_inst.current_data
@@ -361,7 +365,7 @@ end
 
 # rvalue is a Number so we might need to deal with broadcasting
 function _perturb_param!(param::ArrayModelParameter{T}, md::ModelDef, i::Int,
-                         trans::TransformSpec_ModelParams, rvalue::Number) where {T, N}
+                         trans::TransformSpec_ModelParams, rvalue::Number) where T
     op = trans.op
     pvalue = value(param)
     indices = _param_indices(param, md, i, trans)
@@ -373,14 +377,16 @@ function _perturb_param!(param::ArrayModelParameter{T}, md::ModelDef, i::Int,
 
         # If there is no time index we have all methods needed to broadcast normally
         if isnothing(ti)
-            broadcast_flag = sum(map(x -> length(x) > 1, indices)) > 0
+            # broadcast_flag = sum(map(x -> length(x) > 1, indices)) > 0
+            broadcast_flag = any(map(x -> isa(x, Array), indices)) # check if any of the elements of the indices Vector are Arrays (likely Vectors)
             broadcast_flag ? pvalue[indices...] .= rvalue : pvalue[indices...] = rvalue
         
         else
-            indices1, ts, indices2 = split_indices(indices, ti)
+            indices1, ts, indices2 = indices[1:ti - 1], indices[ti], indices[ti + 1:end]
             non_ts_indices = [indices1..., indices2...]
-            broadcast_flag = isempty(non_ts_indices) ? false : sum(map(x -> length(x) > 1, non_ts_indices)) > 0
-            
+            # broadcast_flag = isempty(non_ts_indices) ? false : sum(map(x -> length(x) > 1, non_ts_indices)) > 0
+            broadcast_flag = isempty(non_ts_indices) ? false : any(map(x -> isa(x, Array), non_ts_indices)) # check if any of the elements of the indices Vector are Arrays (likely Vectors)
+
             # Loop over the Array of TimestepIndex 
             if isa(ts, Array) 
                 for el in ts
@@ -523,11 +529,11 @@ function Base.run(sim_def::SimulationDef{T},
     end
             
     # Quick check for results saving
-    if (!results_in_memory) && (results_output_dir === nothing)
-        error("The results_in_memory keyword arg is set to ($results_in_memory) and 
-        results_output_dir keyword arg is set to ($results_output_dir), thus 
-        results will not be saved either in memory or in a file.")
-    end
+    # if (!results_in_memory) && (results_output_dir === nothing)
+    #     error("The results_in_memory keyword arg is set to ($results_in_memory) and 
+    #     results_output_dir keyword arg is set to ($results_output_dir), thus 
+    #     results will not be saved either in memory or in a file.")
+    # end
 
     # Initiate the SimulationInstance and set the models and trials for the copied 
     # sim held within sim_inst
@@ -580,7 +586,7 @@ function Base.run(sim_def::SimulationDef{T},
     ntrials = length(trials)
     total_runs = nscenarios * ntrials
     counter = 1
-    p = Progress(total_runs, counter, "Running $ntrials trials for $nscenarios scenarios...")
+    p = Progress(total_runs; dt = counter, desc = "Running $ntrials trials for $nscenarios scenarios...")
 
     for outer_tup in arg_tuples_outer
         if has_outer_scenario
@@ -637,7 +643,10 @@ function Base.run(sim_def::SimulationDef{T},
                         post_trial_func(sim_inst, trialnum, ntimesteps, tup)
                     end
 
-                    _store_trial_results(sim_inst, trialnum, scen_name, results_output_dir, streams)
+                    if results_in_memory || results_output_dir!==nothing
+                        _store_trial_results(sim_inst, trialnum, scen_name, results_output_dir, streams)
+                    end
+                    
                     _restore_sim_params!(sim_inst, original_values)
 
                     counter += 1
@@ -743,7 +752,18 @@ function set_translist_modelparams!(sim_inst::SimulationInstance{T}) where T <: 
                 # check for component in the model
                 compname in keys(components(m.md)) || error("Component $compname does not exist in $(flat_model_list_names[model_idx]).")
 
-                model_parameters_vec[model_idx] = get_model_param_name(m.md, compname, trans.paramname)
+                model_param_name = get_model_param_name(m.md, compname, trans.paramname)
+                
+                # if this is a shared parameter the user should use syntax without 
+                # compname in it, although this could warn or error
+                if is_shared(model_param(m.md, model_param_name))
+                    @warn string("Parameter indicated in `defsim` as $compname.$(trans.paramname) ",
+                            "is connected to a SHARED parameter $model_param_name. Thus the ",
+                            "value will be varied in all component parameters connected to ",
+                            "that shared model parameter.  We suggest using $model_param_name = distribution ",
+                            "syntax to be transparent about this.")
+                end
+                model_parameters_vec[model_idx] = model_param_name
             end
 
         # no component, so this should be referring to a shared parameter ... but 
@@ -809,9 +829,9 @@ end
 IteratorInterfaceExtensions.isiterable(sim_inst::SimulationInstance{T}) where T <: AbstractSimulationData = true
 TableTraits.isiterabletable(sim_inst::SimulationInstance{T}) where T <: AbstractSimulationData = true
 
-IteratorInterfaceExtensions.getiterator(sim_inst::SimulationInstance{T}) where T = SimIterator{sim_inst.sim_def.nt_type, T}(sim_inst)
+IteratorInterfaceExtensions.getiterator(sim_inst::SimulationInstance{T}) where T = SimIterator{_get_nt_type(sim_inst.sim_def), T}(sim_inst)
 
-column_names(sim_def::SimulationDef{T}) where T <: AbstractSimulationData = fieldnames(sim_def.nt_type)
+column_names(sim_def::SimulationDef{T}) where T <: AbstractSimulationData = fieldnames(_get_nt_type(sim_def))
 column_types(sim_def::SimulationDef{T}) where T <: AbstractSimulationData = [eltype(fld) for fld in values(sim_def.rvdict)]
 
 column_names(sim_inst::SimulationInstance{T}) where T <: AbstractSimulationData = column_names(sim_inst.sim_def)

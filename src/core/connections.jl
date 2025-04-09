@@ -1,6 +1,3 @@
-using LightGraphs
-using MetaGraphs
-
 """
     disconnect_param!(obj::AbstractCompositeComponentDef, comp_def::AbstractComponentDef, param_name::Symbol)
 
@@ -65,8 +62,14 @@ function _check_attributes(obj::AbstractCompositeComponentDef,
 
     param_def = parameter(comp_def, param_name)
 
+    # handle string case 
     t1 = eltype(mod_param.values)
     t2 = eltype(param_def.datatype)
+    
+    # handle String case
+    if t1 == Char; t1 = String; end
+    if t2 == Char; t2 = String; end
+
     if !(t1 <: Union{Missing, t2})
         error("Mismatched datatype of parameter connection: Component: $(nameof(comp_def)) ",
         "Parameter: $param_name ($t2) to Model Parameter ($t1). Mimi requires that ",
@@ -81,7 +84,7 @@ function _check_attributes(obj::AbstractCompositeComponentDef,
     if ! isempty(param_dims) && size(param_dims) != size(model_dims)
         d1 = size(model_dims)
         d2 = size(param_dims)
-        error("Mismatched dimensions of parameter connection: Component: $(nameof(comp_def)) Parameter: $param_name ($d2) to Model Parameter ($d1)")
+        error("Mismatched dimensions of parameter connection: Component: $(nameof(comp_def)) Parameter: $param_name (size $d2) to Model Parameter (size $d1)")
     end
 
     # Don't check sizes for ConnectorComps since they won't match.
@@ -102,6 +105,46 @@ function _check_attributes(obj::AbstractCompositeComponentDef,
     end
 end
 
+"""
+    _check_attributes(obj::AbstractCompositeComponentDef, ipc::InternalParameterConnection)
+
+Check that the dimensions of the source variable match the attributes of the
+destination Parameter in InternalParameterConnection `ipc` and an object `obj`. Note
+that the names of the dimensions need not match, just the length of dimensions in
+the same position.
+"""
+function _check_attributes(obj::AbstractCompositeComponentDef, ipc::InternalParameterConnection)
+
+        var_def =  Mimi.variable(Mimi.find_comp(obj, ipc.src_comp_path), ipc.src_var_name)
+        param_def = Mimi.parameter(Mimi.find_comp(obj, ipc.dst_comp_path), ipc.dst_par_name)
+
+        param_dims = Mimi.dim_names(param_def)
+        var_dims = Mimi.dim_names(var_def)
+
+        param_comp_name = nameof(Mimi.find_comp(obj, ipc.dst_comp_path))
+        var_comp_name = nameof(Mimi.find_comp(obj, ipc.src_comp_path))
+
+        if size(param_dims) != size(var_dims)
+            d1 = size(var_dims)
+            d2 = size(param_dims)
+            error("Mismatched dimensions of internal parameter connection: ",
+                "DESTINATION: Component $(param_comp_name)'s Parameter $(ipc.dst_par_name) (size $d2) ",
+                "SOURCE: Component $(var_comp_name)'s Variable $(ipc.src_var_name) (size $d1).")
+        end
+
+        for (i, dim) in enumerate(param_dims)
+            if isa(dim, Symbol)
+                param_dim_size = dim_count(obj,dim)
+                var_dim_size = dim_count(obj, var_dims[i])
+                
+                if param_dim_size != var_dim_size
+                    error("Mismatched data size for internal parameter connection: ",
+                    "dimension :$dim in $(param_comp_name)'s Parameter $(ipc.dst_par_name) has $param_dim_size elements; ",
+                    "while the same positioned (#$i) dimension for $(var_comp_name)'s Variable $(ipc.src_var_name) has $var_dim_size elements.")
+                end
+            end
+        end
+end
 """
     _check_attributes(obj::AbstractCompositeComponentDef,
                 comp_def::AbstractComponentDef, param_name::Symbol, 
@@ -278,10 +321,20 @@ function _connect_param!(obj::AbstractCompositeComponentDef,
 
         end
 
+        # create a backup parameter name with the destination leaf component and 
+        # parameter names, as well as a trailing integer to ensure uniqueness in
+        # edge cases.  Check if the name is already used, and if so increment the 
+        # trailing integer until it is a unique model parameter name to the model
+        i = 1
+        backup_param_name = Symbol("backup_", dst_comp_path.names[end], "_", dst_par_name, "_", i)
+        while haskey(obj.model_params, backup_param_name)
+            i += 1
+            backup_param_name = Symbol("backup_", dst_comp_path.names[end], "_", dst_par_name, "_", i)
+        end
+
         # NB: potentially unsafe way to add parameter/might be duplicating work so
         # advise shifting to create_model_param ... but leaving it as is for now
-        add_model_array_param!(obj, dst_par_name, values, dst_dims)
-        backup_param_name = dst_par_name
+        add_model_array_param!(obj, backup_param_name, values, dst_dims)
 
     else
         # cannot use backup_offset keyword argument if there is no backup
@@ -307,10 +360,14 @@ Try calling:
         backup_param_name = nothing
     end
 
-    # Check the units, if provided
-    if ! ignoreunits && ! verify_units(variable_unit(src_comp_def, src_var_name),
-                                       parameter_unit(dst_comp_def, dst_par_name))
-        error("Units of $src_comp_path:$src_var_name do not match $dst_comp_path:$dst_par_name.")
+    # Check the units, if both are provided
+    var_unit = variable_unit(src_comp_def, src_var_name)
+    par_unit = parameter_unit(dst_comp_def, dst_par_name)
+
+    if !ignoreunits && var_unit !== "" && par_unit !== "" 
+        if ! verify_units(var_unit, par_unit)
+            error("Units of $src_comp_path:$src_var_name ($var_unit) do not match $dst_comp_path:$dst_par_name ($par_unit).")
+        end
     end
 
     conn = InternalParameterConnection(src_comp_path, src_var_name, dst_comp_path, dst_par_name,
@@ -512,7 +569,7 @@ Note that this function `set_leftover_params! has been deprecated, and uses shou
 be transitioned to using `update_leftover_params!` with keys specific to component-parameter 
 pairs i.e. (comp_name, param_name) => value in the dictionary.
 """
-function set_leftover_params!(md::ModelDef, parameters::Dict) where T
+function set_leftover_params!(md::ModelDef, parameters::Dict)
     # @warn "The function `set_leftover_params! has been deprecated, please use `update_leftover_params!` with keys specific to component, parameter pairs i.e. (comp_name, param_name) => value in the dictionary.")
     parameters = Dict(Symbol.(k) => v for (k, v) in parameters)
     for param_ref in nothing_params(md)
@@ -664,8 +721,8 @@ end
 Add an model parameter with name `name` and Model Parameter `value` to ModelDef `md`.
 """
 function add_model_param!(md::ModelDef, name::Symbol, value::ModelParameter)
-    # if haskey(obj.model_params, name)
-    #     @warn "Redefining model param :$name in $(obj.comp_path) from $(obj.model_params[name]) to $value"
+    # if haskey(md.model_params, name)
+    #     @warn "Redefining model param :$name in $(md.comp_path) from $(md.model_params[name]) to $value"
     # end
     md.model_params[name] = value
     dirty!(md)
@@ -690,6 +747,9 @@ using it and only do so under the hood.
 function add_model_param!(md::ModelDef, name::Symbol, value::Number;
                             param_dims::Union{Nothing,Array{Symbol}} = nothing, 
                             is_shared::Bool = false)
+    # if haskey(md.model_params, name)
+    #     @warn "Redefining model param :$name in $(md.comp_path) from $(md.model_params[name]) to $value"
+    # end                        
     add_model_scalar_param!(md, name, value, is_shared = is_shared)
 end
 
@@ -707,6 +767,9 @@ function add_model_param!(md::ModelDef, name::Symbol,
                              value::Union{AbstractArray, AbstractRange, Tuple};
                              param_dims::Union{Nothing,Array{Symbol}} = nothing, 
                              is_shared::Bool = false)
+    # if haskey(md.model_params, name)
+    #     @warn "Redefining model param :$name in $(md.comp_path) from $(md.model_params[name]) to $value"
+    # end  
 
     ti = get_time_index_position(param_dims)
     if !isnothing(ti)
@@ -795,7 +858,7 @@ end
     update_param!(mi::ModelInstance, name::Symbol, value)
 
 Update the `value` of a model parameter in `ModelInstance` `mi`, referenced
-by `name`.  This is an UNSAFE updat as it does not dirty the model, and should 
+by `name`.  This is an UNSAFE update as it does not dirty the model, and should 
 be used carefully and specifically for things like our MCS work.
 """
 function update_param!(mi::ModelInstance, name::Symbol, value)
@@ -821,7 +884,18 @@ not dirty the model, and should  be used carefully and specifically for things l
 our MCS work.
 """
 function update_param!(mi::ModelInstance, comp_name::Symbol, param_name::Symbol, value)
-    param = mi.md.model_params[get_model_param_name(mi.md, comp_name, param_name)]
+
+    model_param_name = get_model_param_name(mi.md, comp_name, param_name)
+    param = model_param(mi.md, model_param_name)
+
+    is_shared(param) && error("$comp_name:$param_name is connected to a ",
+            "a shared model parameter with name $model_param_name in the model, ",
+            "to update the shared model parameter please call `update_param!(mi, $model_param_name, value)` ", 
+            "to explicitly update a shared parameter that may be connected to ", 
+            "several components. If you want to disconnect $comp_name:$param_name ",
+            "from the shared model parameter and connect it to it's own unshared ",
+            "model parameter, first use `disconnect_param!` and then you can use this same ", 
+            "call to `update_param!`.")
 
     if param isa ScalarModelParameter
         param.value = value
@@ -1061,6 +1135,9 @@ function add_connector_comps!(obj::AbstractCompositeComponentDef)
             # required it, and for now let the first and last of the component 
             # be free and thus be set to the same as the model
             conn_comp = add_comp!(obj, conn_comp_def, conn_comp_name, before=comp_name)
+            if num_dims == 2
+                set_dimension!(obj, :ConnectorCompMatrix_Dim2, 1:size(model_param(obj, conn.backup).values,2))
+            end
             conn_path = conn_comp.comp_path
 
             # remove the connections added in add_comp!
@@ -1110,7 +1187,7 @@ function _pad_parameters!(obj::ModelDef)
     model_times = time_labels(obj)
 
     for (name, param) in obj.model_params
-        # there is only a chance we only need to pad a parameter if:
+        # there is only a chance we need to pad a parameter if:
         #   (1) it is an ArrayModelParameter
         #   (2) it has a time dimension
         #   (3) it does not have a values attribute of nothing, as assigned on initialization

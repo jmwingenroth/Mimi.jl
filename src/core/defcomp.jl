@@ -22,10 +22,10 @@ function _generate_run_func(comp_name, module_name, args, body)
 
     # Needs "global" so function is defined outside the "let" statement
     func = :(
-        global function $(func_name)($(p)::Mimi.ComponentInstanceParameters, 
-                                     $(v)::Mimi.ComponentInstanceVariables, 
-                                     $(d)::Mimi.DimValueDict, 
-                                     $(t)::T) where {T <: Mimi.AbstractTimestep}
+        global function $(func_name)($(p), #::Mimi.ComponentInstanceParameters,
+                                     $(v), #::Mimi.ComponentInstanceVariables
+                                     $(d), #::NamedTuple
+                                     $(t)) #::T <: Mimi.AbstractTimestep
             $(body...)
             return nothing
         end
@@ -45,9 +45,9 @@ function _generate_init_func(comp_name, module_name, args, body)
     func_name = Symbol("init_$(module_name)_$(comp_name)")
 
     func = :(
-        global function $(func_name)($(p)::Mimi.ComponentInstanceParameters, 
-                                     $(v)::Mimi.ComponentInstanceVariables, 
-                                     $(d)::Mimi.DimValueDict)
+        global function $(func_name)($(p), #::Mimi.ComponentInstanceParameters
+                                     $(v), #::Mimi.ComponentInstanceVariables
+                                     $(d)) #::NamedTuple
             $(body...)
             return nothing
         end
@@ -83,8 +83,9 @@ end
 
 function add_parameter(comp_def::ComponentDef, name, datatype, dimensions, description, unit, default)
     if default !== nothing
-        if length(dimensions) != ndims(default)
-            error("Default value has different number of dimensions ($(ndims(default))) than parameter '$name' ($(length(dimensions)))")
+        ndims_default = (default isa Symbol || default isa String) ? 0 : ndims(default)
+        if length(dimensions) != ndims_default
+            error("Default value has different number of dimensions ($(ndims_default))) than parameter '$name' ($(length(dimensions)))")
         end
     end
     p = ParameterDef(name, comp_def.comp_path, datatype, dimensions, description, unit, default)
